@@ -1,0 +1,1 @@
+Large realtime messages work: apps may send up to 128 kB at once (a song in Radio Station, a file in File Sync), more than one Matrix to-device message holds. The widget now sends such messages in parts and puts them together on arrival.

@@ -1,0 +1,1 @@
+Realtime apps now work between Element clients (live chat, Pong, File Sync, live typing, Excalidraw collaboration): Element cannot encrypt a to-device message for all of a user's devices, so the data now goes unencrypted to "*" with its payload encrypted by the widget, under a key that travels in the room's encrypted timeline. Only room members are accepted as senders.

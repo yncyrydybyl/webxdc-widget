@@ -1,0 +1,1 @@
+Apps that start a worker from a root path (Image Album's AVIF encoder) work: the worker's own files are now served from the app.

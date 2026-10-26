@@ -1,0 +1,1 @@
+Apps that start a worker or a frame from a root path now work on the deployed widget too, not only locally: Image Album's AVIF compression finishes, and a frame like Code Playground's preview loads the app's page instead of a 404.

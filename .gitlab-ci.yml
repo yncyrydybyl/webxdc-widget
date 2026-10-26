@@ -1,0 +1,147 @@
+# CI/CD for webxdc apps (de.datanauten.webxdc on marcade.store).
+#
+#   check     svelte-check + vitest                         every push, MR
+#   test      e2e (Chromium + Firefox, mock Matrix host)    every push, MR
+#             in the plain layout and in the store's layout
+#             (bundle under /<version>/, runner on a second origin)
+#   build     the production bundle, as the store builds it
+#   release   on a tag v<x.y.z>: opens the catalog MR in dtn10/marcade-store
+#             (scripts/release-to-store.mjs). The store's MR pipeline builds
+#             the bundle again from the pinned commit; merge and the manual
+#             deploy:live there stay with a person.
+#   verify    scheduled / manual:
+#               verify:live     the e2e suite against the deployed widget
+#               verify:catalog  real apps from webxdc.org start and sync
+#
+# CI/CD variables (Settings → CI/CD → Variables):
+#   STORE_TOKEN   project access token of dtn10/marcade-store (Developer, api).
+#                 Masked + protected; protect tags v* so release jobs get it.
+# Pipeline schedules set CHECK=live or CHECK=catalog.
+#
+# Runners: Playwright needs the memory of the `astra` group runner; the cheap
+# jobs run on any runner.
+
+stages: [check, test, build, release, verify]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"
+      when: never
+    - if: $CI_COMMIT_BRANCH || $CI_COMMIT_TAG
+
+default:
+  interruptible: true
+
+variables:
+  PLAYWRIGHT_IMAGE: mcr.microsoft.com/playwright:v1.63.0-noble # matches @playwright/test in package.json
+  npm_config_store_dir: .pnpm-store
+
+.pnpm:
+  before_script:
+    - corepack enable pnpm
+    - pnpm install --frozen-lockfile
+  cache:
+    key:
+      files: [pnpm-lock.yaml]
+    paths: [.pnpm-store]
+
+.not-scheduled:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+      when: never
+    - when: on_success
+
+check:
+  extends: [.pnpm, .not-scheduled]
+  stage: check
+  image: node:22
+  script:
+    - pnpm check
+    - pnpm test
+
+e2e:
+  extends: [.pnpm, .not-scheduled]
+  stage: test
+  image: $PLAYWRIGHT_IMAGE
+  tags: [astra]
+  variables:
+    BROWSER: chromium
+  script:
+    - VITE_RUNNER_URL=http://127.0.0.1:4186/ pnpm build
+    - pnpm exec playwright test widget --project $BROWSER
+    # The store's layout: /<version>/ subpath, SPA fallback, runner at /<version>/runner/ of another host.
+    - VITE_RUNNER_URL=http://127.0.0.1:4192/0.1.0/runner/ pnpm build
+    - MARCADE_LAYOUT=1 pnpm exec playwright test widget --project $BROWSER
+  artifacts:
+    when: on_failure
+    paths: [test-results/]
+    expire_in: 1 week
+
+# Firefox in the runner's pod is fragile (small /dev/shm); a failure here is a
+# warning, Chromium is the gate. Locally both browsers must pass.
+e2e:firefox:
+  extends: e2e
+  variables:
+    BROWSER: firefox
+  allow_failure: true
+
+build:
+  extends: [.pnpm, .not-scheduled]
+  stage: build
+  image: node:22
+  script:
+    - VERSION=$(node -p "require('./package.json').version")
+    - VITE_RUNNER_URL=https://webxdc-run.widgets.marcade.store/$VERSION/runner/ pnpm build
+    - test -f dist/runner/sw.js
+  artifacts:
+    paths: [dist/]
+    expire_in: 1 week
+
+release:store:
+  stage: release
+  image: node:22-alpine
+  needs: [check, e2e, build] # not e2e:firefox: allowed to fail
+  rules:
+    # Without the token there is nothing this job can do; the catalog MR is then made by hand.
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+$/ && $STORE_TOKEN
+  script:
+    - node scripts/release-to-store.mjs
+  interruptible: false
+
+verify:live:
+  extends: .pnpm
+  stage: verify
+  image: $PLAYWRIGHT_IMAGE
+  tags: [astra]
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CHECK == "live"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
+      allow_failure: true
+  variables:
+    LIVE_VERSION: latest
+  script:
+    - curl -sfI https://webxdc.widgets.marcade.store/$LIVE_VERSION/ > /dev/null
+    - curl -sf https://webxdc-run.widgets.marcade.store/$LIVE_VERSION/runner/sw.js > /dev/null
+    - WIDGET_URL=https://webxdc.widgets.marcade.store/$LIVE_VERSION/index.html pnpm exec playwright test widget
+
+verify:catalog:
+  extends: .pnpm
+  stage: verify
+  image: $PLAYWRIGHT_IMAGE
+  tags: [astra]
+  needs: []
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CHECK == "catalog"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE != "schedule"
+      when: manual
+      allow_failure: true
+  script:
+    - VITE_RUNNER_URL=http://127.0.0.1:4186/ pnpm build
+    - NETWORK=1 pnpm exec playwright test catalog --project chromium
+  artifacts:
+    when: always
+    paths: [test-results/, test/real/]
+    expire_in: 2 weeks

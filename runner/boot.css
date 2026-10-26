@@ -1,0 +1,4 @@
+html, body { margin: 0; height: 100%; background: transparent; }
+body { display: grid; place-items: center; font: 14px/1.4 system-ui, sans-serif; color: #6c737e; }
+p { margin: 0; padding: 16px; text-align: center; max-width: 36em; }
+.error { color: #b3261e; }

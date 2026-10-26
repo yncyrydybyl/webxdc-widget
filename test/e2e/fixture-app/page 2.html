@@ -1,0 +1,2 @@
+<!doctype html><html><head><script src="webxdc.js"></script></head><body><p id="p2">second page</p>
+<script>webxdc.setUpdateListener((u) => { document.getElementById("p2").textContent = "page 2 sees serial " + u.serial; }, 0);</script></body></html>

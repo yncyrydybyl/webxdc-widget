@@ -1,0 +1,1 @@
+First release. Play webxdc apps (polls, checklists, chess, editors, games) in a Matrix room: add them from the webxdc.org catalog, an .xdc file or a link, pin one as its own room widget. Apps run offline in an isolated frame; their updates travel as encrypted room events. Element Web/Desktop; Element X does not run widgets.
