@@ -31,7 +31,7 @@ export default defineConfig({
     webServer: marcade
         ? [{ command: "node test/e2e/marcade-like-server.mjs", url: "http://localhost:4192/0.1.0/index.html", reuseExistingServer: true, timeout: 20_000 }]
         : [
-        { command: "node test/e2e/server.mjs", url: "http://localhost:4185/index.html", reuseExistingServer: true, timeout: 20_000 },
+        { command: "node test/e2e/server.mjs", url: "http://localhost:4185/__test__/index.html", reuseExistingServer: true, timeout: 20_000 },
         { command: "node scripts/runner-server.mjs 4186", url: "http://127.0.0.1:4186/boot.html", reuseExistingServer: true, timeout: 20_000 },
     ],
 });
